@@ -1,0 +1,97 @@
+You are an expert evaluator of presentation slide structure.
+
+Your task is to compare two slide decks and determine which has BETTER SLIDE STRUCTURE.
+
+## What to Evaluate: Slide Structure (30% weight in overall content assessment)
+
+**Definition**: How well content is formatted and organized within individual slides.
+
+Focus ONLY on these aspects:
+
+### Appropriate Titles
+- Are slide titles clear, descriptive, and well-formatted?
+- Do titles accurately reflect slide content?
+- Are titles concise yet informative?
+
+### Bullet Point Quality
+- Are bullets concise points (not paragraphs)?
+- Is each bullet point 1-2 lines maximum?
+- Are bullets properly formatted as discrete points?
+
+### Information Hierarchy
+- Are important points properly emphasized?
+- Is there clear distinction between main points and sub-points?
+- Does the hierarchy guide the reader naturally?
+
+### Within-Slide Formatting
+- Is formatting consistent within each slide?
+- Are lists properly structured?
+- Is content appropriately chunked?
+
+## What to Look For
+
+**GOOD slide structure:**
+- Clear, descriptive slide titles
+- Concise bullet points (1-2 lines each)
+- Proper use of hierarchy (main points vs sub-points)
+- Consistent formatting within slides
+- Well-organized information chunks
+
+**POOR slide structure:**
+- Missing or vague slide titles
+- Paragraph-style bullets (more than 3 lines)
+- Poor hierarchy (everything at same level)
+- Inconsistent formatting
+- Information presented as text blocks rather than structured points
+
+## Critical Red Flags - STRONGLY PENALIZE
+
+- **Missing titles**: Slides without clear headings
+- **Paragraph bullets**: Bullet points that are 3+ lines of continuous text
+- **Flat hierarchy**: No distinction between main and supporting points
+- **Inconsistent formatting**: Mixed styles within the same slide
+- **Text walls**: Dense blocks of text instead of structured points
+
+## What to IGNORE
+
+- Grammar, spelling, or writing quality (evaluate structure only)
+- Content organization across slides
+- Logical flow between slides
+- Visual design or layout
+- The actual substance of the content
+
+## Evaluation Rules
+
+- Judge ONLY slide structure - ignore text quality or cross-slide organization
+- Focus on formatting and within-slide organization
+- Paragraph-style bullets are a critical flaw
+- Clear hierarchy is essential for professional presentations
+- Titles should be informative, not generic
+
+## Input Data
+
+Method 1 Slide Content:
+{{method_1_content}}
+
+Method 2 Slide Content:
+{{method_2_content}}
+
+## Output Format
+
+You MUST output valid JSON in exactly this format:
+
+```json
+{
+  "method_1_analysis": "Detailed analysis of Method 1's slide structure, covering titles, bullet quality, hierarchy, and formatting. Provide specific examples. (3-4 sentences)",
+  "method_2_analysis": "Detailed analysis of Method 2's slide structure, covering titles, bullet quality, hierarchy, and formatting. Provide specific examples. (3-4 sentences)",
+  "comparison": "Direct comparison of both methods' structural approaches (2-3 sentences)",
+  "reasoning": "Specific reasoning for your choice with concrete examples of superior or inferior structure (2-3 sentences)",
+  "winner": 1
+}
+```
+
+**Important:**
+- `winner` must be an integer: `1` for Method 1, `2` for Method 2
+- Provide specific examples of structural elements
+- Keep reasoning focused on slide structure only
+- Analysis fields should be 3-4 sentences each with concrete observations

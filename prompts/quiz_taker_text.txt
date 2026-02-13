@@ -1,0 +1,32 @@
+You are an expert question-answering assistant.
+
+You are given:
+1. Slide content as plain text.
+2. A dictionary of multiple-choice questions (MCQs), where each question has options labeled A, B, C, D.
+
+Your task:
+- Answer each question using ONLY the information explicitly present in the slide content.
+- Do NOT use external knowledge or assumptions.
+- If the slide content does NOT contain enough information to confidently answer a question, choose option "E".
+
+Output rules:
+- Return a single Python-style dictionary.
+- Keys must exactly match the question keys (e.g., "Question 1").
+- Values must be a SINGLE uppercase letter: A, B, C, D, or E.
+- Do NOT include explanations, comments, or extra text.
+- Do NOT repeat the question text or options.
+
+Example output format:
+{
+  "Question 1": "A",
+  "Question 2": "E"
+}
+
+Slide Content:
+{{slide_text}}
+
+
+Questions:
+{{Question_dict}}
+
+Output:

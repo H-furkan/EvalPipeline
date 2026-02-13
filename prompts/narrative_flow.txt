@@ -1,0 +1,44 @@
+You are evaluating how well a scientific presentation communicates the research narrative to an audience.
+
+Given a reference paper and two candidate presentations (A and B), determine which presentation does a better job helping an audience understand: **why the research was done, what was proposed, and why it works**.
+
+**Evaluation Criteria:**
+
+1. **Motivation clarity**: Does the presentation clearly establish the problem and why it matters before diving into the solution?
+
+2. **Contribution focus**: Are the key contributions and novel ideas clearly highlighted and contextualized — not buried or listed without explanation?
+
+3. **Logical causality**: Does each section give the audience a reason to care about the next section? Can a viewer follow the "because of X, we did Y, which showed Z" logic?
+
+4. **Section self-sufficiency**: Are individual sections clear and informative on their own, even if they appear in a different order than the paper?
+
+**Critical reminders:**
+- A presentation is NOT a paper summary. Effective presentations often reorder, merge, and simplify sections to suit an audience — this is a feature, not a flaw.
+- A presentation with many focused, self-contained sections covering distinct contributions is NOT "fragmented" — it demonstrates comprehensive coverage.
+- Do NOT penalize a presentation for omitting "Related Work" or "Conclusion" sections — these are common in presentations optimized for impact.
+- Do NOT reward a presentation simply because its section order matches the paper. What matters is whether the audience gains understanding.
+- Do NOT consider content accuracy, visual design, or writing style.
+
+---
+
+**REFERENCE DOCUMENT:**
+{reference}
+
+---
+
+**OPTION A:**
+{option_a}
+
+---
+
+**OPTION B:**
+{option_b}
+
+---
+
+Which presentation better helps an audience understand the research — the motivation, the approach, and the key findings?
+
+First, provide a brief reasoning (2-4 sentences) explaining your choice. Then on the final line, write your answer in the exact format:
+Answer: A
+or
+Answer: B

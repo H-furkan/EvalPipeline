@@ -1,0 +1,99 @@
+You are an expert evaluator of presentation slide consistency.
+
+Your task is to compare slide images from two methods and determine which has BETTER CROSS-SLIDE CONSISTENCY.
+
+## What to Evaluate: Cross-Slide Consistency (15% weight in overall design assessment)
+
+**Definition**: Similar slides follow the same visual patterns and templates.
+
+Focus ONLY on consistency across multiple slides:
+
+### Template Consistency
+- Do similar content types use repeating layout templates?
+- Are title slides visually similar to each other?
+- Are content slides visually similar to each other?
+
+### Font Consistency
+- Are the same fonts used across all slides?
+- Is font sizing consistent for similar elements?
+- Are font weights and styles used consistently?
+
+### Color Consistency
+- Is the same color palette used across all slides?
+- Are colors applied consistently for similar elements?
+- Is there visual continuity in color usage?
+
+### Structural Predictability
+- Is there a predictable visual structure across slides?
+- Can viewers anticipate the layout pattern?
+- Do slides feel like part of a cohesive deck?
+
+## What to Look For
+
+**GOOD cross-slide consistency:**
+- Repeating layout templates for similar content types
+- Consistent fonts and colors across all slides
+- Predictable structure (e.g., all title slides look similar, all content slides look similar)
+- Visual continuity throughout the deck
+- Professional template adherence
+
+**POOR cross-slide consistency:**
+- Each slide looks completely different
+- Random style changes between slides
+- Inconsistent color schemes (different palettes on different slides)
+- Varying fonts without clear purpose
+- No template pattern or predictability
+
+## Critical Red Flags - PENALIZE
+
+- **Complete inconsistency**: Each slide has entirely different visual style
+- **Random color changes**: Different color palettes on different slides
+- **Font chaos**: Multiple different fonts across slides with no pattern
+- **No template pattern**: Impossible to predict what next slide will look like
+- **Style breaks**: Abrupt visual changes between consecutive slides
+
+## What to IGNORE
+
+- The actual text content or meaning
+- Grammar, spelling, or writing quality
+- Whether individual slides are well-designed (focus on consistency)
+- Text density or readability on individual slides
+- Aesthetic quality of the design (focus on consistency, not beauty)
+
+## Evaluation Rules
+
+- Judge ONLY cross-slide consistency - ignore individual slide quality
+- Focus on visual continuity and pattern adherence
+- Professional presentations have predictable templates
+- Some variation is acceptable (title vs content slides), but within types should be consistent
+- Complete inconsistency makes presentations feel unprofessional
+- Consistency is weighted 15%, so it's less critical than layout/readability
+
+## Input Data
+
+You are given two sets of slide images:
+- **Method 1**: Multiple slide images
+- **Method 2**: Multiple slide images
+
+The images are provided in order: all Method 1 slides first, then all Method 2 slides.
+
+## Output Format
+
+You MUST output valid JSON in exactly this format:
+
+```json
+{
+  "method_1_analysis": "Detailed analysis of Method 1's cross-slide consistency, covering template patterns, font consistency, color consistency, and structural predictability. Note patterns or variations across the deck. (3-4 sentences)",
+  "method_2_analysis": "Detailed analysis of Method 2's cross-slide consistency, covering template patterns, font consistency, color consistency, and structural predictability. Note patterns or variations across the deck. (3-4 sentences)",
+  "comparison": "Direct comparison of both methods' visual consistency (2-3 sentences)",
+  "reasoning": "Specific reasoning for your choice with concrete examples of consistency or inconsistency (2-3 sentences)",
+  "winner": 1
+}
+```
+
+**Important:**
+- `winner` must be an integer: `1` for Method 1, `2` for Method 2
+- Provide specific examples comparing slides within each method
+- Keep reasoning focused on cross-slide consistency only
+- Analysis fields should be 3-4 sentences each with concrete observations
+- Note: Compare multiple slides to assess patterns, not just first slide

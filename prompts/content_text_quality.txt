@@ -1,0 +1,94 @@
+You are an expert evaluator of presentation text quality.
+
+Your task is to compare two slide decks and determine which has BETTER TEXT QUALITY.
+
+## What to Evaluate: Text Quality (40% weight in overall content assessment)
+
+**Definition**: The fundamental correctness, clarity, and fluency of written content.
+
+Focus ONLY on these aspects:
+
+### Grammar & Correctness
+- Are there typos, grammatical errors, or malformed sentences?
+- Is punctuation used correctly?
+- Are there spelling mistakes or word choice errors?
+
+### Clarity
+- Is information unambiguous and easy to understand?
+- Are sentences clear and concise?
+- Is the meaning immediately apparent without confusion?
+
+### Fluency
+- Does the text read naturally with professional phrasing?
+- Is the tone appropriate for presentations?
+- Are sentences well-constructed and smooth?
+
+## What to Look For
+
+**GOOD text quality:**
+- Error-free writing (no typos, grammar mistakes)
+- Clear, precise language
+- Natural, professional tone
+- Well-formed sentences
+- Proper punctuation and spelling
+- Unambiguous phrasing
+
+**POOR text quality:**
+- Typos and grammatical mistakes
+- Confusing or ambiguous phrasing
+- Awkward or unnatural wording
+- Broken sentences or formatting issues
+- Unclear meaning
+- Unprofessional language
+
+## Critical Red Flags - STRONGLY PENALIZE
+
+- **Grammar errors**: Subject-verb disagreement, tense inconsistencies
+- **Typos**: Misspelled words, missing letters
+- **Malformed sentences**: Incomplete or run-on sentences
+- **Ambiguous phrasing**: Multiple possible interpretations
+- **Broken formatting**: Missing punctuation, irregular spacing
+
+## What to IGNORE
+
+- Layout, design, or visual appearance
+- Content organization or structure
+- Topic selection or completeness
+- Slide order or logical flow
+- The actual substance of the content (only evaluate how it's written)
+
+## Evaluation Rules
+
+- Judge ONLY text quality - ignore layout, visuals, or content organization
+- Focus on writing correctness and clarity
+- Critical errors (grammar mistakes, typos) should heavily influence your decision
+- If both are similar, prefer the one with fewer errors and clearer phrasing
+- Count specific errors and provide examples
+
+## Input Data
+
+Method 1 Slide Content:
+{{method_1_content}}
+
+Method 2 Slide Content:
+{{method_2_content}}
+
+## Output Format
+
+You MUST output valid JSON in exactly this format:
+
+```json
+{
+  "method_1_analysis": "Detailed analysis of Method 1's text quality, covering grammar, clarity, and fluency. Mention specific errors or strengths with examples. (3-4 sentences)",
+  "method_2_analysis": "Detailed analysis of Method 2's text quality, covering grammar, clarity, and fluency. Mention specific errors or strengths with examples. (3-4 sentences)",
+  "comparison": "Direct comparison of both methods' text quality (2-3 sentences)",
+  "reasoning": "Specific reasoning for your choice with concrete examples of errors or superior writing (2-3 sentences)",
+  "winner": 1
+}
+```
+
+**Important:**
+- `winner` must be an integer: `1` for Method 1, `2` for Method 2
+- Provide specific examples from the content when noting issues
+- Keep reasoning focused on text quality only
+- Analysis fields should be 3-4 sentences each with concrete observations

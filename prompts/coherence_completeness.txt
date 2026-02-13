@@ -1,0 +1,114 @@
+You are an expert evaluator of presentation completeness and narrative structure.
+
+Your task is to compare two presentation descriptions and determine which has BETTER NARRATIVE ARC AND COMPLETENESS.
+
+## What to Evaluate: Narrative Arc & Completeness (25% weight + 15% redundancy = 40% combined)
+
+**Definition**: Clear beginning (introduction) → development (main content) → conclusion structure, with efficient information presentation.
+
+Focus on both narrative structure AND information efficiency:
+
+### Narrative Structure
+- Is there a distinct introduction that sets context?
+- Does the middle develop ideas systematically?
+- Is there a conclusion that wraps up key points?
+
+### Introduction Quality
+- Does the presentation set proper context at the start?
+- Are objectives or scope clearly established?
+- Is the audience oriented to the topic?
+
+### Development Quality
+- Does the main content build systematically?
+- Are ideas developed thoroughly?
+- Is there clear progression through the topic?
+
+### Conclusion Quality
+- Is there proper closure or summary?
+- Are key points wrapped up?
+- Does the presentation feel complete?
+
+### Information Efficiency
+- Is information presented without unnecessary repetition?
+- Does each slide add new value?
+- Are key points repeated excessively?
+
+### Redundancy Check
+- Are multiple slides saying essentially the same thing?
+- Could slides be merged without losing information?
+- Is repetition excessive or appropriate for emphasis?
+
+## What to Look For
+
+**GOOD narrative arc & completeness:**
+- Clear introduction that sets context
+- Systematic development of ideas
+- Proper conclusion that wraps up
+- Each slide adds new information
+- Minimal unnecessary repetition
+- Complete coverage without redundancy
+- Appropriate emphasis through selective repetition
+
+**POOR narrative arc & completeness:**
+- No clear introduction or conclusion
+- Presentation that "just stops" without resolution
+- Main content jumps around without building
+- Multiple slides saying the same thing
+- Excessive repetition of covered concepts
+- Slides that could be merged
+- Missing essential information
+
+## Critical Red Flags - STRONGLY PENALIZE
+
+- **No introduction**: Jumps into content without context
+- **No conclusion**: Presentation ends abruptly without closure
+- **Random development**: Middle section has no systematic structure
+- **High redundancy**: Multiple slides covering identical content
+- **Excessive repetition**: Same points repeated 3+ times unnecessarily
+- **Mergeable slides**: Clear cases of slides that duplicate information
+
+## What to IGNORE
+
+- Writing quality, grammar, or style
+- Logical flow between slides (that's logical progression)
+- Topic consistency (that's a different criterion)
+- Visual design or formatting
+- Minor repetition for emphasis (some repetition is acceptable)
+
+## Evaluation Rules
+
+- Judge BOTH narrative structure AND information efficiency
+- Missing introduction or conclusion is a serious flaw
+- Redundancy is penalized, but appropriate repetition is acceptable
+- Professional presentations have clear beginning-middle-end
+- Each slide should add value, not just restate previous content
+- Complete doesn't mean verbose - efficient completeness is ideal
+
+## Input Data
+
+Method 1 Output:
+{{method_1_desc}}
+
+Method 2 Output:
+{{method_2_desc}}
+
+## Output Format
+
+You MUST output valid JSON in exactly this format:
+
+```json
+{
+  "method_1_analysis": "Detailed analysis of Method 1's narrative arc and completeness, covering introduction, development, conclusion, and redundancy. Note structural strengths/weaknesses and any repetitive content. (3-4 sentences)",
+  "method_2_analysis": "Detailed analysis of Method 2's narrative arc and completeness, covering introduction, development, conclusion, and redundancy. Note structural strengths/weaknesses and any repetitive content. (3-4 sentences)",
+  "comparison": "Direct comparison of both methods' narrative structure and information efficiency (2-3 sentences)",
+  "reasoning": "Specific reasoning for your choice with concrete examples of structure and redundancy (2-3 sentences)",
+  "winner": 1
+}
+```
+
+**Important:**
+- `winner` must be an integer: `1` for Method 1, `2` for Method 2
+- Provide specific examples of narrative elements and redundancy
+- Keep reasoning focused on narrative arc and completeness only
+- Analysis fields should be 3-4 sentences each with concrete observations
+- Consider both structure (intro-dev-conclusion) and efficiency (redundancy)
