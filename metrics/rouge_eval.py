@@ -16,6 +16,7 @@ import constants as C
 from utils.result_utils import (
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -56,16 +57,9 @@ def _compute_rouge_l(hypothesis: str, reference: str) -> float:
         return f1
 
 
-def _get_text(paper_name: str, method: str) -> str | None:
-    path = Path(C.PROCESSED_DATA_DIR) / paper_name / f"{method}.txt"
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return None
-
-
 def run(papers: list[str], baseline_methods: list[str]) -> dict:
     """
-    Compute ROUGE-L for all methods (ours + baselines) against each paper's orig.txt.
+    Compute ROUGE-L for all methods (ours + baselines) against each paper's source text.
     """
     out_path = result_path(METRIC_NAME)
     existing = load_existing(out_path)
@@ -77,9 +71,9 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
     for i, paper in enumerate(papers, 1):
         print(f"\n[{METRIC_NAME}] [{i}/{len(papers)}] {paper}")
 
-        reference = _get_text(paper, "orig")
+        reference = read_processed_text(paper, "orig")
         if reference is None:
-            print(f"  Skipping: orig.txt not found")
+            print(f"  Skipping: orig text not found")
             continue
 
         if paper not in per_paper:
@@ -90,7 +84,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
                 print(f"  Skipping {method} (already done)")
                 continue
 
-            hyp = _get_text(paper, method)
+            hyp = read_processed_text(paper, method)
             if hyp is None:
                 print(f"  Skipping {method}: text not found")
                 continue

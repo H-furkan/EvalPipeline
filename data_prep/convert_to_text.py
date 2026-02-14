@@ -2,21 +2,22 @@
 data_prep/convert_to_text.py — Data preparation step.
 
 Converts:
-  • PPTX presentation JSON (extracted.json) → plain text
-  • Original paper PDFs → markdown text
+  • PPTX presentations → markdown text (extracted directly via python-pptx)
+  • PDF presentations  → markdown text (extracted via pymupdf4llm)
+  • Original paper PDFs → markdown text (with supplementary material stripped)
 
 Output folder structure
 -----------------------
   PROCESSED_DATA_DIR/
     {paper}/
-      orig.txt          ← source paper (PDF → markdown)
-      {method}.txt      ← slide text (extracted.json → plain text)
+      orig.md           ← source paper (PDF → markdown, supp material removed)
+      {method}.md        ← slide text (PPTX/PDF → markdown)
       ...
 
 Files are skipped automatically if they already exist (pass force=True to re-convert).
 """
 
-import json
+import re
 import sys
 from pathlib import Path
 
@@ -29,37 +30,116 @@ except ImportError:
     pymupdf4llm = None
 
 
+# ── Supplementary material stripping ─────────────────────────────────────────
+
+# Regex patterns that match reference section headings in markdown
+_REFERENCES_HEADING_RE = re.compile(
+    r"^(#{1,4})\s+"                                     # 1-4 '#' characters + space
+    r"(References|Bibliography|Works\s+Cited|Literature\s+Cited)"
+    r"\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Regex patterns that match supplementary / appendix headings in markdown.
+# These are the sections we want to REMOVE when they appear AFTER references.
+_SUPPLEMENTARY_HEADING_RE = re.compile(
+    r"^(#{1,4})\s+"                                     # 1-4 '#' characters + space
+    r"("
+    r"Appendix(?:\s+[A-Z0-9])?"                         # Appendix, Appendix A, Appendix 1
+    r"|Appendices"
+    r"|Supplementary\s+Materials?"
+    r"|Supplementary\s+Information"
+    r"|Supplemental\s+Materials?"
+    r"|Supporting\s+Information"
+    r"|Online\s+Appendix"
+    r"|Additional\s+Materials?"
+    r"|Supplementary"                                    # standalone
+    r")"
+    r"(\s.*)?$",                                         # optional trailing text on same line
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def strip_supplementary_material(text: str) -> tuple[str, bool]:
+    """
+    Remove supplementary material / appendices that appear AFTER the references
+    section in an academic paper.
+
+    Logic:
+      1. Find the LAST references heading in the document.
+      2. Starting from the end of that references heading, scan forward for
+         section headings that indicate supplementary / appendix content.
+      3. If found, cut everything from that supplementary heading onward.
+      4. References themselves are ALWAYS kept intact.
+
+    Returns:
+        (processed_text, was_stripped) — the cleaned text and whether anything was cut.
+
+    Safety guarantees:
+      - If no references section is found → text returned unchanged.
+      - If no supplementary heading is found after references → text returned unchanged.
+      - References section content is NEVER removed.
+      - Content BEFORE references is NEVER removed.
+    """
+    ref_matches = list(_REFERENCES_HEADING_RE.finditer(text))
+    if not ref_matches:
+        return text, False
+
+    ref_match = ref_matches[-1]
+    ref_heading_level = len(ref_match.group(1))
+    after_ref_start = ref_match.end()
+
+    supp_matches = list(_SUPPLEMENTARY_HEADING_RE.finditer(text, after_ref_start))
+    if not supp_matches:
+        return text, False
+
+    cut_position = None
+    for supp_match in supp_matches:
+        supp_heading_level = len(supp_match.group(1))
+        if supp_heading_level <= ref_heading_level + 1:
+            cut_position = supp_match.start()
+            break
+
+    if cut_position is None:
+        return text, False
+
+    stripped_text = text[:cut_position].rstrip() + "\n"
+    return stripped_text, True
+
+
 # ── Conversion helpers ────────────────────────────────────────────────────────
 
-def convert_extracted_json_to_text(json_path: Path) -> str | None:
+def convert_pptx_to_text(pptx_path: Path) -> str | None:
     """
-    Convert an extracted.json file (slide descriptions) to a plain text string.
+    Extract text directly from a PPTX file using python-pptx.
 
-    Expected JSON shape:
-        {
-          "slide_descriptions": ["Slide 1 content ...", ...],
-          "background": {"title": "...", "speaker": "..."}
-        }
+    Returns a markdown-formatted string with slide headings and content.
     """
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        from pptx import Presentation
+    except ImportError:
+        print("  [convert] python-pptx is not installed. Run: pip install python-pptx")
+        return None
 
-        slide_descriptions = data.get("slide_descriptions", [])
-        background = data.get("background", {})
-
+    try:
+        prs = Presentation(str(pptx_path))
         parts = []
-        if background.get("title"):
-            parts.append(f"# {background['title']}\n")
-        if background.get("speaker"):
-            parts.append(f"**Speakers:** {background['speaker']}\n")
 
-        for i, description in enumerate(slide_descriptions, 1):
-            parts.append(f"\n## Slide {i}\n{description}")
+        for i, slide in enumerate(prs.slides, 1):
+            slide_texts = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        text = paragraph.text.strip()
+                        if text:
+                            slide_texts.append(text)
 
-        return "\n".join(parts)
+            slide_content = "\n".join(slide_texts) if slide_texts else "(empty slide)"
+            parts.append(f"## Slide {i}\n{slide_content}")
+
+        return "\n\n".join(parts)
     except Exception as e:
-        print(f"  [convert] Error reading {json_path}: {e}")
+        print(f"  [convert] Error reading PPTX {pptx_path}: {e}")
         return None
 
 
@@ -73,6 +153,53 @@ def convert_pdf_to_markdown(pdf_path: Path) -> str | None:
     except Exception as e:
         print(f"  [convert] Error converting PDF {pdf_path}: {e}")
         return None
+
+
+def convert_pdf_slides_to_text(pdf_path: Path) -> str | None:
+    """
+    Convert a PDF presentation to markdown text using pymupdf4llm.
+
+    Each page is treated as a slide. Returns markdown with slide headings.
+    """
+    if pymupdf4llm is None:
+        print("  [convert] pymupdf4llm is not installed. Run: pip install pymupdf4llm")
+        return None
+    try:
+        import pymupdf
+        doc = pymupdf.open(str(pdf_path))
+        parts = []
+        for i, page in enumerate(doc, 1):
+            text = page.get_text().strip()
+            if not text:
+                text = "(empty slide)"
+            parts.append(f"## Slide {i}\n{text}")
+        doc.close()
+        return "\n\n".join(parts)
+    except Exception as e:
+        print(f"  [convert] Error converting PDF slides {pdf_path}: {e}")
+        return None
+
+
+# ── Presentation file discovery ──────────────────────────────────────────────
+
+def find_presentation_file(method_dir: Path) -> Path | None:
+    """
+    Find a presentation file (PPTX or PDF) in a method/paper directory.
+
+    Looks for PPTX first (more structured), then PDF.
+    Returns the file path or None if not found.
+    """
+    # Try PPTX first
+    pptx_files = list(method_dir.glob("*.pptx"))
+    if pptx_files:
+        return pptx_files[0]
+
+    # Try PDF
+    pdf_files = list(method_dir.glob("*.pdf"))
+    if pdf_files:
+        return pdf_files[0]
+
+    return None
 
 
 # ── Paper / method discovery ──────────────────────────────────────────────────
@@ -121,44 +248,107 @@ def process_paper(
     paper_out = output_dir / paper_name
     paper_out.mkdir(parents=True, exist_ok=True)
 
-    # ── Source paper (orig.txt) ────────────────────────────────────────────
-    orig_out = paper_out / "orig.txt"
+    # ── Source paper (orig.md) ─────────────────────────────────────────────
+    orig_out = paper_out / "orig.md"
+    # Also check for legacy .txt files and migrate them
+    orig_out_legacy = paper_out / "orig.txt"
+    if orig_out_legacy.exists() and not orig_out.exists():
+        orig_out_legacy.rename(orig_out)
+        print(f"  [convert] Migrated {paper_name}/orig.txt -> orig.md")
+
     if orig_out.exists() and not force:
-        print(f"  [convert] Skipping {paper_name}/orig.txt (already exists)")
+        print(f"  [convert] Skipping {paper_name}/orig.md (already exists)")
         stats["orig"] = True
     else:
+        # Try pre-existing source.md first (already converted by other tooling)
+        source_md = papers_dir / paper_name / "source.md"
         pdf_path = papers_dir / paper_name / "original.pdf"
-        if pdf_path.exists():
+
+        if source_md.exists():
+            print(f"  [convert] Using existing source.md for {paper_name}")
+            text = source_md.read_text(encoding="utf-8")
+            text, was_stripped = strip_supplementary_material(text)
+            if was_stripped:
+                print(f"    [convert] Stripped supplementary material from {paper_name}")
+            orig_out.write_text(text, encoding="utf-8")
+            stats["orig"] = True
+            print(f"    -> Written {orig_out}")
+        elif pdf_path.exists():
             print(f"  [convert] Converting PDF: {paper_name}")
             text = convert_pdf_to_markdown(pdf_path)
             if text:
+                text, was_stripped = strip_supplementary_material(text)
+                if was_stripped:
+                    print(f"    [convert] Stripped supplementary material from {paper_name}")
                 orig_out.write_text(text, encoding="utf-8")
                 stats["orig"] = True
-                print(f"    ✓ Written {orig_out}")
+                print(f"    -> Written {orig_out}")
         else:
-            print(f"  [convert] Warning: original.pdf not found for {paper_name}")
+            print(f"  [convert] Warning: no source.md or original.pdf found for {paper_name}")
 
     # ── Method presentations ───────────────────────────────────────────────
     for method in methods:
-        method_out = paper_out / f"{method}.txt"
+        method_out = paper_out / f"{method}.md"
+        # Also check for legacy .txt files and migrate them
+        method_out_legacy = paper_out / f"{method}.txt"
+        if method_out_legacy.exists() and not method_out.exists():
+            method_out_legacy.rename(method_out)
+            print(f"  [convert] Migrated {paper_name}/{method}.txt -> {method}.md")
+
         if method_out.exists() and not force:
-            print(f"  [convert] Skipping {paper_name}/{method}.txt (already exists)")
+            print(f"  [convert] Skipping {paper_name}/{method}.md (already exists)")
             stats["methods"][method] = True
             continue
 
-        json_path = generated_dir / method / paper_name / "extracted.json"
-        if json_path.exists():
-            print(f"  [convert] Converting {method} / {paper_name}")
-            text = convert_extracted_json_to_text(json_path)
+        method_dir = generated_dir / method / paper_name
+        if not method_dir.exists():
+            print(f"  [convert] Warning: directory not found for {method}/{paper_name}")
+            stats["methods"][method] = False
+            continue
+
+        pres_file = find_presentation_file(method_dir)
+        if pres_file is not None:
+            print(f"  [convert] Converting {method} / {paper_name} ({pres_file.suffix})")
+            if pres_file.suffix.lower() == ".pptx":
+                text = convert_pptx_to_text(pres_file)
+            else:  # .pdf
+                text = convert_pdf_slides_to_text(pres_file)
+
+            # Check if the extraction yielded only empty slides (e.g. image-only PDFs).
+            # If so, don't write and fall through to the slide_text.txt fallback.
+            all_empty = False
             if text:
+                non_empty = [
+                    line for line in text.split("\n")
+                    if line.strip()
+                    and not line.strip().startswith("## Slide")
+                    and line.strip() != "(empty slide)"
+                ]
+                all_empty = len(non_empty) == 0
+
+            if text and not all_empty:
                 method_out.write_text(text, encoding="utf-8")
                 stats["methods"][method] = True
-                print(f"    ✓ Written {method_out}")
+                print(f"    -> Written {method_out}")
+                continue
+            elif all_empty:
+                print(f"    [convert] PDF/PPTX yielded all empty slides; trying slide_text.txt fallback")
             else:
                 stats["methods"][method] = False
-        else:
-            print(f"  [convert] Warning: extracted.json not found for {method}/{paper_name}")
-            stats["methods"][method] = False
+                continue
+
+        # Fallback: use existing slide_text.txt if no PPTX/PDF
+        slide_text_path = method_dir / "slide_text.txt"
+        if slide_text_path.exists():
+            print(f"  [convert] Using slide_text.txt for {method} / {paper_name}")
+            text = slide_text_path.read_text(encoding="utf-8")
+            method_out.write_text(text, encoding="utf-8")
+            stats["methods"][method] = True
+            print(f"    -> Written {method_out}")
+            continue
+
+        print(f"  [convert] Warning: no PPTX, PDF, or slide_text.txt for {method}/{paper_name}")
+        stats["methods"][method] = False
 
     return stats
 
@@ -171,7 +361,7 @@ def run_conversion(
     force: bool = False,
 ) -> list[dict]:
     """
-    Convert all papers / methods to text files in PROCESSED_DATA_DIR.
+    Convert all papers / methods to markdown files in PROCESSED_DATA_DIR.
 
     Args:
         papers:  List of paper names to process. None = auto-discover.
@@ -204,7 +394,7 @@ def run_conversion(
     print("\n" + "=" * 60)
     print("CONVERSION SUMMARY")
     print("=" * 60)
-    print(f"Papers with orig.txt : {sum(s['orig'] for s in all_stats)}/{len(all_stats)}")
+    print(f"Papers with orig.md : {sum(s['orig'] for s in all_stats)}/{len(all_stats)}")
     method_totals: dict[str, int] = {}
     for s in all_stats:
         for m, ok in s["methods"].items():

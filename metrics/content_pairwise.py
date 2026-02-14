@@ -7,12 +7,11 @@ Attributes:
   3. organization   — within-slide logic, cross-slide flow     (prompts/content_organization.txt)
   4. conciseness    — conciseness, audience-appropriateness    (prompts/content_conciseness.txt)
 
-Data type: text (slide descriptions from extracted.json or processed text files)
-Model: text LLM
+Data type: text (processed markdown from PPTX/PDF presentations)
+Model: VL model
 Output: results/content_pairwise.json
 """
 
-import json
 import random
 import sys
 import time
@@ -25,6 +24,7 @@ from utils.result_utils import (
     aggregate_pairwise_wins,
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -50,24 +50,8 @@ def _load_templates() -> dict[str, str]:
 
 
 def _get_slide_text(method: str, paper_name: str) -> str | None:
-    """
-    Return slide text for a given method/paper from the processed data directory.
-    Falls back to extracted.json slide descriptions if the .txt is missing.
-    """
-    txt_path = Path(C.PROCESSED_DATA_DIR) / paper_name / f"{method}.txt"
-    if txt_path.exists():
-        return txt_path.read_text(encoding="utf-8")
-
-    # Fallback: raw extracted.json
-    json_path = Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "extracted.json"
-    if json_path.exists():
-        try:
-            data = json.load(open(json_path, encoding="utf-8"))
-            descs = data.get("slide_descriptions", [])
-            return "\n".join(f"Slide {i+1}: {d}" for i, d in enumerate(descs))
-        except Exception:
-            pass
-    return None
+    """Return slide text for a given method/paper from the processed data directory."""
+    return read_processed_text(paper_name, method)
 
 
 def _evaluate_attribute(template: str, ours_text: str, other_text: str) -> dict:
@@ -100,7 +84,7 @@ def _evaluate_attribute(template: str, ours_text: str, other_text: str) -> dict:
     except Exception:
         pass
 
-    response = call_text(rendered, model=C.TEXT_MODEL, return_json=True)
+    response = call_text(rendered, model=C.MODEL, return_json=True)
 
     if not isinstance(response, dict) or "winner" not in response:
         return {"ours_wins": False, "winner": "unknown", "method_order": method_order, "raw": response}
@@ -132,7 +116,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
 
     existing = load_existing(out_path)
     per_paper: dict = existing.get("per_paper", {})
-    metadata = make_metadata(METRIC_NAME, C.TEXT_MODEL)
+    metadata = make_metadata(METRIC_NAME, C.MODEL)
 
     for i, paper in enumerate(papers, 1):
         print(f"\n[{METRIC_NAME}] [{i}/{len(papers)}] {paper}")

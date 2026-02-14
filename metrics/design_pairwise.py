@@ -8,12 +8,11 @@ Attributes:
   4. aesthetics    — color scheme, balance, polish             (prompts/design_aesthetics.txt)
   5. consistency   — template uniformity across slides         (prompts/design_consistency.txt)
 
-Data type: images (PNG slides from IMAGES_CACHE_DIR or converted on the fly from PPTX)
-Model: vision LLM
+Data type: images (PNG slides from IMAGES_CACHE_DIR or converted on the fly from PPTX/PDF)
+Model: VL model
 Output: results/design_pairwise.json
 """
 
-import glob
 import random
 import sys
 import time
@@ -22,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import constants as C
 from llm.client import call_vision
-from utils.image_utils import get_method_images, pptx_to_images, resize_images_tmp, sample_slides
+from utils.image_utils import find_and_convert_images, resize_images_tmp, sample_slides
 from utils.result_utils import (
     aggregate_pairwise_wins,
     load_existing,
@@ -53,24 +52,8 @@ def _load_templates() -> dict[str, str]:
 
 
 def _get_images(method: str, paper_name: str) -> list[str]:
-    """
-    Return slide image paths, converting PPTX on-the-fly if needed.
-    """
-    # 1. Try cache
-    cached = get_method_images(method, paper_name)
-    if cached:
-        return cached
-
-    # 2. Try converting from PPTX
-    pptx_files = glob.glob(
-        str(Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "*.pptx")
-    )
-    if not pptx_files:
-        return []
-
-    out_dir = Path(C.IMAGES_CACHE_DIR) / method / paper_name
-    images = pptx_to_images(pptx_files[0], out_dir)
-    return images
+    """Return slide image paths, converting PPTX/PDF on-the-fly if needed."""
+    return find_and_convert_images(method, paper_name)
 
 
 def _render_template(template: str, n1: int, n2: int) -> str:
@@ -95,6 +78,8 @@ def _evaluate_attribute(
     Expects JSON response with 'winner' key (1 or 2).
     """
     n = min(len(ours_images), len(other_images), C.MAX_SLIDES_FOR_VISUAL)
+    if n == 0:
+        return {"ours_wins": False, "winner": "unknown", "method_order": "none", "raw": "no images"}
     ours_sampled = sample_slides(ours_images, n)
     other_sampled = sample_slides(other_images, n)
 
@@ -110,7 +95,7 @@ def _evaluate_attribute(
     # Resize to reduce token usage
     resized = resize_images_tmp(all_images, C.IMAGE_TARGET_WIDTH)
 
-    response = call_vision(prompt, resized, model=C.VISION_MODEL, return_json=True)
+    response = call_vision(prompt, resized, model=C.MODEL, return_json=True)
 
     if not isinstance(response, dict) or "winner" not in response:
         return {"ours_wins": False, "winner": "unknown", "method_order": method_order, "raw": response}
@@ -142,7 +127,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
 
     existing = load_existing(out_path)
     per_paper: dict = existing.get("per_paper", {})
-    metadata = make_metadata(METRIC_NAME, C.VISION_MODEL)
+    metadata = make_metadata(METRIC_NAME, C.MODEL)
 
     for i, paper in enumerate(papers, 1):
         print(f"\n[{METRIC_NAME}] [{i}/{len(papers)}] {paper}")

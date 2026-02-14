@@ -6,12 +6,11 @@ Attributes:
   2. topical_consistency — topic coherence across slides        (prompts/coherence_consistency.txt)
   3. completeness        — narrative arc, no major gaps         (prompts/coherence_completeness.txt)
 
-Data type: extracted.json slide descriptions (falling back to processed text)
-Model: text LLM
+Data type: processed markdown text from PPTX/PDF presentations
+Model: VL model
 Output: results/coherence_pairwise.json
 """
 
-import json
 import random
 import sys
 import time
@@ -24,6 +23,7 @@ from utils.result_utils import (
     aggregate_pairwise_wins,
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -47,45 +47,32 @@ def _load_templates() -> dict[str, str]:
     return templates
 
 
-def _get_extracted(method: str, paper_name: str) -> dict | None:
-    """Load extracted.json for a method/paper combination."""
-    json_path = Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "extracted.json"
-    if json_path.exists():
-        try:
-            return json.load(open(json_path, encoding="utf-8"))
-        except Exception:
-            pass
-    # Fallback: wrap the processed text as a pseudo-extracted dict
-    txt_path = Path(C.PROCESSED_DATA_DIR) / paper_name / f"{method}.txt"
-    if txt_path.exists():
-        text = txt_path.read_text(encoding="utf-8")
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
-        return {"slide_descriptions": lines}
-    return None
-
-
-def _render_template(template: str, desc1: dict | list, desc2: dict | list) -> str:
-    """Render a Jinja2 coherence prompt with two extracted.json dicts."""
+def _render_template(template: str, text1: str, text2: str) -> str:
+    """Render a Jinja2 coherence prompt with two slide text inputs."""
     try:
         from jinja2 import Template as J2Template
-        return J2Template(template).render(method_1_desc=desc1, method_2_desc=desc2)
+        return J2Template(template).render(method_1_desc=text1, method_2_desc=text2)
     except Exception:
-        return template  # Return unrendered if Jinja2 unavailable
+        return (
+            template
+            .replace("{{ method_1_desc }}", text1)
+            .replace("{{ method_2_desc }}", text2)
+        )
 
 
 def _evaluate_attribute(
     template: str,
-    ours_extracted: dict,
-    other_extracted: dict,
+    ours_text: str,
+    other_text: str,
 ) -> dict:
     if random.random() < 0.5:
-        rendered = _render_template(template, ours_extracted, other_extracted)
+        rendered = _render_template(template, ours_text, other_text)
         method_order = "ours_first"
     else:
-        rendered = _render_template(template, other_extracted, ours_extracted)
+        rendered = _render_template(template, other_text, ours_text)
         method_order = "other_first"
 
-    response = call_text(rendered, model=C.TEXT_MODEL, return_json=True)
+    response = call_text(rendered, model=C.MODEL, return_json=True)
 
     if not isinstance(response, dict) or "winner" not in response:
         return {"ours_wins": False, "winner": "unknown", "method_order": method_order, "raw": response}
@@ -117,14 +104,14 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
 
     existing = load_existing(out_path)
     per_paper: dict = existing.get("per_paper", {})
-    metadata = make_metadata(METRIC_NAME, C.TEXT_MODEL)
+    metadata = make_metadata(METRIC_NAME, C.MODEL)
 
     for i, paper in enumerate(papers, 1):
         print(f"\n[{METRIC_NAME}] [{i}/{len(papers)}] {paper}")
 
-        ours_extracted = _get_extracted(C.OURS_METHOD, paper)
-        if ours_extracted is None:
-            print(f"  Skipping: extracted.json not found for {C.OURS_METHOD}")
+        ours_text = read_processed_text(paper, C.OURS_METHOD)
+        if ours_text is None:
+            print(f"  Skipping: text not found for {C.OURS_METHOD}")
             continue
 
         if paper not in per_paper:
@@ -135,9 +122,9 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
                 print(f"  Skipping {baseline} (already done)")
                 continue
 
-            other_extracted = _get_extracted(baseline, paper)
-            if other_extracted is None:
-                print(f"  Skipping {baseline}: extracted.json not found")
+            other_text = read_processed_text(paper, baseline)
+            if other_text is None:
+                print(f"  Skipping {baseline}: text not found")
                 continue
 
             print(f"  vs {baseline}")
@@ -146,7 +133,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
             for attr in ATTRIBUTES:
                 name = attr["name"]
                 print(f"    [{name}] ...", end=" ", flush=True)
-                r = _evaluate_attribute(templates[name], ours_extracted, other_extracted)
+                r = _evaluate_attribute(templates[name], ours_text, other_text)
                 r["attribute"] = name
                 attr_results.append(r)
                 print("ours" if r["ours_wins"] else "other")
@@ -177,5 +164,5 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
         "per_paper": per_paper,
     }
     save_incremental(out_path, final)
-    print(f"\n[{METRIC_NAME}] Done. Results → {out_path}")
+    print(f"\n[{METRIC_NAME}] Done. Results -> {out_path}")
     return final

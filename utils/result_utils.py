@@ -169,3 +169,33 @@ def print_scalar_summary(metric_name: str, result: dict) -> None:
         scores = {k: v for k, v in stats.items() if isinstance(v, (int, float))}
         row = "  ".join(f"{k}={v:.4f}" for k, v in scores.items())
         print(f"  {method:30s}  {row}")
+
+
+# ── File path helpers ────────────────────────────────────────────────────────
+
+def get_processed_text_path(paper_name: str, method_or_orig: str) -> Path | None:
+    """
+    Find the processed text file for a paper/method, supporting both .md and .txt.
+
+    Looks for .md first (new format), falls back to .txt (legacy format).
+    Returns the Path if found, None otherwise.
+    """
+    base = Path(C.PROCESSED_DATA_DIR) / paper_name / method_or_orig
+    for ext in (".md", ".txt"):
+        path = base.with_suffix(ext)
+        if path.exists():
+            return path
+    return None
+
+
+def read_processed_text(paper_name: str, method_or_orig: str) -> str | None:
+    """
+    Read the processed text for a paper/method.
+
+    Supports both .md and .txt files (prefers .md).
+    Returns the text content or None if not found.
+    """
+    path = get_processed_text_path(paper_name, method_or_orig)
+    if path is not None:
+        return path.read_text(encoding="utf-8")
+    return None

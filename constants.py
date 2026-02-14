@@ -8,33 +8,36 @@ Everything in pipeline.py and every metric imports from here.
 import os
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
+_BASE = os.path.dirname(os.path.abspath(__file__))
+_DATASET = os.path.join(_BASE, "Dataset")
+
 # Root directory that holds generated presentation outputs (one sub-folder per method)
-GENERATED_SAMPLES_DIR = "/home/furkan/Eval/Evaluation/eval_data/generated_samples_final"
+GENERATED_SAMPLES_DIR = os.path.join(_DATASET, "generated_samples_final")
 
 # Root directory for original papers (one sub-folder per paper, each containing original.pdf)
-BENCHMARK_DATA_DIR = "/home/furkan/Eval/Evaluation/eval_data/final_benchmark_data/science/pdf"
+BENCHMARK_DATA_DIR = os.path.join(_DATASET, "final_benchmark_data/science/pdf")
 
 # Where quiz JSON files are cached (quiz_simple.json / quiz_detail.json per paper)
-QUIZ_DATA_DIR = "/home/furkan/Eval/Evaluation/eval_data/final_benchmark_data/science/quiz"
+QUIZ_DATA_DIR = os.path.join(_DATASET, "final_benchmark_data/science/quiz")
 
-# Where converted text files are written (processed_data/{paper}/{method}.txt)
-PROCESSED_DATA_DIR = "/home/furkan/Eval/EvalPipeline/results/processed_data"
+# Where converted text files are written (processed_data/{paper}/{method}.md)
+PROCESSED_DATA_DIR = os.path.join(_BASE, "results/processed_data")
 
 # Where all metric result JSON files are saved
-RESULTS_DIR = "/home/furkan/Eval/EvalPipeline/results"
+RESULTS_DIR = os.path.join(_BASE, "results")
 
 # Where prompt templates live (narrative_flow.txt, content_*.txt, etc.)
-PROMPTS_DIR = "/home/furkan/Eval/EvalPipeline/prompts"
+PROMPTS_DIR = os.path.join(_BASE, "prompts")
 
-# Where PPTX-to-image conversions are cached (per method/paper)
-IMAGES_CACHE_DIR = "/home/furkan/Eval/EvalPipeline/results/slide_images"
+# Where slide-to-image conversions are cached (per method/paper)
+IMAGES_CACHE_DIR = os.path.join(_BASE, "results/slide_images")
 
-# Path to LibreOffice binary used for PPTX → PNG conversion
+# Path to LibreOffice binary used for PPTX/PDF → PNG conversion
 LIBREOFFICE_PATH = os.path.expanduser("~/libreoffice/opt/libreoffice25.8/program/soffice")
 
 # ── Methods ───────────────────────────────────────────────────────────────────
 # The "our" method being evaluated
-OURS_METHOD = "ours_rst-4o"
+OURS_METHOD = "ours_rst-4o_newv2"
 
 # Baseline methods to compare against
 BASELINE_METHODS = [
@@ -59,23 +62,35 @@ VLLM_HEALTH_URL = "http://localhost:7001/health"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_API_BASE = "https://api.openai.com/v1"
 
-# ── Models ────────────────────────────────────────────────────────────────────
-# Text-only LLM used for narrative flow, content, coherence metrics
-TEXT_MODEL = "Qwen/Qwen2.5-32B-Instruct"
+# ── Model ─────────────────────────────────────────────────────────────────────
+# Single vision-language model used for ALL evaluation tasks (text and image).
+# Qwen2.5-VL models handle both text-only and multimodal prompts.
+MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 
-# Vision-language model used for design (image-based) and ppt_score metrics
-VISION_MODEL = "Qwen/Qwen2.5-VL-32B-Instruct"
-
-# Model for quiz generation and quiz-taking (when backend == "openai")
-QUIZ_MODEL = "gpt-4o-2024-08-06"
-
-# Local model path for perplexity evaluation (loaded via transformers)
+# Local model path for perplexity evaluation (loaded via transformers, no server needed)
 PPL_MODEL_PATH = "meta-llama/Meta-Llama-3-8B"
+
+# ── Supported Models ─────────────────────────────────────────────────────────
+# Pre-defined model configurations for easy switching.
+# Each entry maps a short alias to the full model identifier.
+# Use --model CLI arg (or edit MODEL above) to switch.
+#
+# To serve a model with vLLM:
+#   python -m vllm.entrypoints.openai.api_server \
+#       --model <MODEL_ID> --port 7001 --dtype float16 \
+#       --trust-remote-code --tensor-parallel-size <N_GPUS>
+
+SUPPORTED_MODELS = {
+    "qwen2.5-vl-7b":  "Qwen/Qwen2.5-VL-7B-Instruct",
+    "qwen2.5-vl-32b": "Qwen/Qwen2.5-VL-32B-Instruct",
+    "qwen2.5-vl-72b": "Qwen/Qwen2.5-VL-72B-Instruct",
+    "gpt-4o":         "gpt-4o-2024-08-06",
+}
 
 # ── Inference Parameters ──────────────────────────────────────────────────────
 TEMPERATURE = 0.0          # Deterministic generation
 TOP_P = 1.0
-MAX_TOKENS = 512           # Max tokens per LLM response
+MAX_TOKENS = 2048          # Max tokens per LLM response (needs room for reasoning)
 SEED = 42                  # Random seed for A/B position shuffling
 REQUEST_TIMEOUT = 120      # HTTP timeout in seconds for API calls
 
@@ -108,6 +123,7 @@ ENABLED_METRICS = [
     "rouge_eval",         # ROUGE-L: text overlap between slides and source paper
     "perplexity_eval",    # Perplexity (PPL): language fluency via Llama-3-8B
     "ppt_score_eval",     # VLM-as-judge: per-slide content / style / logic scores (1-5)
+    "general_stats_eval", # General stats: page count, character count, figure count per presentation
 ]
 
 # Skip data preparation step (PDF/PPTX → text conversion).

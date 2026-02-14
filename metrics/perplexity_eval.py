@@ -17,6 +17,7 @@ import constants as C
 from utils.result_utils import (
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -32,7 +33,7 @@ def _load_model():
     model_path = C.PPL_MODEL_PATH
     print(f"  [ppl] Loading model: {model_path}")
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         device_map=device,
@@ -68,10 +69,7 @@ def _compute_ppl(text: str, model, tokenizer) -> float:
 
 
 def _get_text(paper_name: str, method: str) -> str | None:
-    path = Path(C.PROCESSED_DATA_DIR) / paper_name / f"{method}.txt"
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return None
+    return read_processed_text(paper_name, method)
 
 
 def run(papers: list[str], baseline_methods: list[str]) -> dict:

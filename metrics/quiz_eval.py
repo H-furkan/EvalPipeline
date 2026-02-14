@@ -12,7 +12,7 @@ Templates:
   • prompts/quiz_generate_detail.txt  — 50 detailed factual questions
   • prompts/quiz_taker_text.txt       — answer questions from slide text
 
-Model: quiz generation + answering uses TEXT_MODEL (or QUIZ_MODEL if configured)
+Model: quiz generation + answering uses MODEL (VL model)
 Output: results/quiz_eval.json
 """
 
@@ -26,8 +26,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import constants as C
 from llm.client import call_text
 from utils.result_utils import (
+    get_processed_text_path,
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -37,9 +39,7 @@ METRIC_NAME = "quiz_eval"
 
 def _quiz_model() -> str:
     """Return the model to use for quiz generation/answering."""
-    if C.LLM_BACKEND == "openai" and C.QUIZ_MODEL:
-        return C.QUIZ_MODEL
-    return C.TEXT_MODEL
+    return C.MODEL
 
 
 def _load_template(name: str) -> str:
@@ -95,13 +95,13 @@ def _generate_quiz(paper_name: str, force: bool = False) -> tuple[dict, dict] | 
         return simple, detail
 
     # Need source paper text
-    orig_txt = Path(C.PROCESSED_DATA_DIR) / paper_name / "orig.txt"
     source_md = Path(C.BENCHMARK_DATA_DIR) / paper_name / "source.md"
+    orig_path = get_processed_text_path(paper_name, "orig")
 
     if source_md.exists():
         paper_text = source_md.read_text(encoding="utf-8")
-    elif orig_txt.exists():
-        paper_text = orig_txt.read_text(encoding="utf-8")
+    elif orig_path is not None:
+        paper_text = orig_path.read_text(encoding="utf-8")
     else:
         print(f"  [quiz] No source text found for {paper_name}")
         return None
@@ -175,9 +175,9 @@ def _take_quiz(slide_text: str, quiz: dict, quiz_type: str) -> tuple[int, int]:
 
 
 def _get_slide_text(method: str, paper_name: str) -> str | None:
-    txt_path = Path(C.PROCESSED_DATA_DIR) / paper_name / f"{method}.txt"
-    if txt_path.exists():
-        return txt_path.read_text(encoding="utf-8")
+    text = read_processed_text(paper_name, method)
+    if text is not None:
+        return text
 
     # Fallback: paper2slides uses slide_text.txt
     alt = Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "slide_text.txt"

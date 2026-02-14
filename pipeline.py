@@ -39,7 +39,7 @@ from utils.result_utils import print_pairwise_summary, print_scalar_summary
 # Metrics that produce pairwise win-rate results
 PAIRWISE_METRICS = {"narrative_flow", "content_pairwise", "design_pairwise", "coherence_pairwise"}
 # Metrics that produce scalar / per-method averages
-SCALAR_METRICS = {"quiz_eval", "rouge_eval", "perplexity_eval", "ppt_score_eval"}
+SCALAR_METRICS = {"quiz_eval", "rouge_eval", "perplexity_eval", "ppt_score_eval", "fid_eval", "general_stats_eval"}
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
@@ -117,7 +117,8 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Metrics to run. If omitted, runs all metrics in constants.ENABLED_METRICS.\n"
             "Available: narrative_flow, content_pairwise, design_pairwise, "
-            "coherence_pairwise, quiz_eval, rouge_eval, perplexity_eval, ppt_score_eval"
+            "coherence_pairwise, quiz_eval, rouge_eval, perplexity_eval, ppt_score_eval, "
+            "fid_eval, general_stats_eval"
         ),
     )
     parser.add_argument(
@@ -159,6 +160,23 @@ def parse_args() -> argparse.Namespace:
         metavar="N",
         help="Randomly sample N papers. -1 or omitted = all papers.",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        metavar="MODEL",
+        help=(
+            "VL model alias or full HuggingFace ID. "
+            "Aliases: " + ", ".join(C.SUPPORTED_MODELS.keys())
+        ),
+    )
+    parser.add_argument(
+        "--vllm-api-base",
+        type=str,
+        default=None,
+        metavar="URL",
+        help="Override vLLM API base URL (e.g. http://localhost:7001/v1).",
+    )
     return parser.parse_args()
 
 
@@ -170,6 +188,13 @@ def main() -> None:
     # Apply runtime overrides to constants (in-memory only)
     if args.backend:
         C.LLM_BACKEND = args.backend
+
+    # Apply model override
+    if args.model:
+        C.MODEL = C.SUPPORTED_MODELS.get(args.model, args.model)
+    if args.vllm_api_base:
+        C.VLLM_API_BASE = args.vllm_api_base
+        C.VLLM_HEALTH_URL = args.vllm_api_base.rsplit("/v1", 1)[0] + "/health"
 
     # Resolve metrics list
     metrics_to_run = args.metrics if args.metrics else list(C.ENABLED_METRICS)
@@ -195,8 +220,7 @@ def main() -> None:
     print("EVALUATION PIPELINE")
     print(f"{'='*70}")
     print(f"Backend       : {C.LLM_BACKEND}")
-    print(f"Text model    : {C.TEXT_MODEL}")
-    print(f"Vision model  : {C.VISION_MODEL}")
+    print(f"Model         : {C.MODEL}")
     print(f"Ours method   : {C.OURS_METHOD}")
     print(f"Baselines     : {baseline_methods}")
     print(f"Papers        : {len(papers)}")

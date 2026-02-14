@@ -2,20 +2,18 @@
 metrics/ppt_score_eval.py — VLM-as-judge per-slide scoring.
 
 Scores each presentation on three dimensions (1-5 scale each):
-  • content score  — information quality per slide   (prompts/ppteval_content.txt)
-  • style score    — visual design per slide          (prompts/ppteval_style.txt)
-  • logic score    — overall coherence of the deck   (prompts/ppteval_coherence.txt)
+  - content score  — information quality per slide   (prompts/ppteval_content.txt)
+  - style score    — visual design per slide          (prompts/ppteval_style.txt)
+  - logic score    — overall coherence of the deck   (prompts/ppteval_coherence.txt)
 
-The logic score is computed at the presentation level using extracted.json.
+The logic score is computed at the presentation level using the processed slide text.
 Content and style scores are computed per-slide using slide images
-(converted from PPTX on-the-fly if needed).
+(converted from PPTX/PDF on-the-fly if needed).
 
-Model: vision LLM (for per-slide) + text LLM (for logic)
+Model: VL model (handles both vision and text tasks)
 Output: results/ppt_score_eval.json
 """
 
-import glob
-import json
 import sys
 import time
 from pathlib import Path
@@ -23,10 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import constants as C
 from llm.client import call_text, call_vision
-from utils.image_utils import get_method_images, pptx_to_images, resize_images_tmp, sample_slides
+from utils.image_utils import find_and_convert_images, resize_images_tmp, sample_slides
 from utils.result_utils import (
     load_existing,
     make_metadata,
+    read_processed_text,
     result_path,
     save_incremental,
 )
@@ -54,25 +53,11 @@ def _load_prompt(filename: str) -> str:
 
 # ── Per-slide scoring ─────────────────────────────────────────────────────────
 
-def _get_images(method: str, paper_name: str) -> list[str]:
-    cached = get_method_images(method, paper_name)
-    if cached:
-        return cached
-    pptx_files = glob.glob(
-        str(Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "*.pptx")
-    )
-    if not pptx_files:
-        return []
-    out_dir = Path(C.IMAGES_CACHE_DIR) / method / paper_name
-    return pptx_to_images(pptx_files[0], out_dir)
-
-
 def _score_slides(images: list[str], content_tmpl: str, style_tmpl: str) -> dict:
     """
     Score a sample of slides for content and style.
     Returns {"content": mean_score, "style": mean_score}.
     """
-    # Use describe + score approach from original evals.py
     describe_content_tmpl = _load_prompt("ppteval_describe_content.txt")
     describe_style_tmpl = _load_prompt("ppteval_describe_style.txt")
 
@@ -84,18 +69,18 @@ def _score_slides(images: list[str], content_tmpl: str, style_tmpl: str) -> dict
 
     for img_path in resized:
         # Describe content
-        content_descr = call_vision(describe_content_tmpl, [img_path], model=C.VISION_MODEL)
+        content_descr = call_vision(describe_content_tmpl, [img_path], model=C.MODEL)
         if content_descr:
             score_prompt = _render(content_tmpl, descr=content_descr)
-            resp = call_text(score_prompt, model=C.TEXT_MODEL, return_json=True)
+            resp = call_text(score_prompt, model=C.MODEL, return_json=True)
             if isinstance(resp, dict) and "score" in resp:
                 content_scores.append(float(resp["score"]))
 
         # Describe style
-        style_descr = call_vision(describe_style_tmpl, [img_path], model=C.VISION_MODEL)
+        style_descr = call_vision(describe_style_tmpl, [img_path], model=C.MODEL)
         if style_descr:
             score_prompt = _render(style_tmpl, descr=style_descr)
-            resp = call_text(score_prompt, model=C.TEXT_MODEL, return_json=True)
+            resp = call_text(score_prompt, model=C.MODEL, return_json=True)
             if isinstance(resp, dict) and "score" in resp:
                 style_scores.append(float(resp["score"]))
 
@@ -111,20 +96,10 @@ def _score_slides(images: list[str], content_tmpl: str, style_tmpl: str) -> dict
 
 # ── Presentation-level logic score ────────────────────────────────────────────
 
-def _get_extracted(method: str, paper_name: str) -> dict | None:
-    json_path = Path(C.GENERATED_SAMPLES_DIR) / method / paper_name / "extracted.json"
-    if json_path.exists():
-        try:
-            return json.load(open(json_path, encoding="utf-8"))
-        except Exception:
-            pass
-    return None
-
-
-def _score_logic(extracted: dict, coherence_tmpl: str) -> dict:
-    """Score overall presentation coherence using extracted slide descriptions."""
-    prompt = _render(coherence_tmpl, presentation=extracted)
-    resp = call_text(prompt, model=C.TEXT_MODEL, return_json=True)
+def _score_logic(slide_text: str, coherence_tmpl: str) -> dict:
+    """Score overall presentation coherence using processed slide text."""
+    prompt = _render(coherence_tmpl, presentation=slide_text)
+    resp = call_text(prompt, model=C.MODEL, return_json=True)
     if isinstance(resp, dict) and "score" in resp:
         return resp
     return {"score": 0, "reason": str(resp)}
@@ -140,7 +115,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
     out_path = result_path(METRIC_NAME)
     existing = load_existing(out_path)
     per_paper: dict = existing.get("per_paper", {})
-    metadata = make_metadata(METRIC_NAME, f"{C.VISION_MODEL}+{C.TEXT_MODEL}")
+    metadata = make_metadata(METRIC_NAME, C.MODEL)
 
     content_tmpl = _load_prompt("ppteval_content.txt")
     style_tmpl = _load_prompt("ppteval_style.txt")
@@ -163,7 +138,7 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
             result: dict = {}
 
             # Per-slide scoring (needs images)
-            images = _get_images(method, paper)
+            images = find_and_convert_images(method, paper)
             if images:
                 slide_scores = _score_slides(images, content_tmpl, style_tmpl)
                 result.update(slide_scores)
@@ -173,20 +148,22 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
                 result["style"] = 0.0
                 result["slides_scored"] = 0
 
-            # Logic score (needs extracted.json)
-            extracted = _get_extracted(method, paper)
-            if extracted:
-                logic = _score_logic(extracted, coherence_tmpl)
-                result["logic"] = logic
+            # Logic score (uses processed slide text)
+            slide_text = read_processed_text(paper, method)
+            if slide_text:
+                logic = _score_logic(slide_text, coherence_tmpl)
+                result["logic"] = float(logic.get("score", 0)) if isinstance(logic, dict) else float(logic)
+                result["logic_reason"] = logic.get("reason", "") if isinstance(logic, dict) else ""
             else:
-                print(f"    No extracted.json found; skipping logic scoring")
-                result["logic"] = {"score": 0, "reason": "not available"}
+                print(f"    No slide text found; skipping logic scoring")
+                result["logic"] = 0.0
+                result["logic_reason"] = "not available"
 
             per_paper[paper][method] = result
             print(
                 f"    content={result['content']:.2f} "
                 f"style={result['style']:.2f} "
-                f"logic={result.get('logic', {}).get('score', 0)}"
+                f"logic={result.get('logic', 0.0)}"
             )
 
             save_incremental(out_path, {"metadata": metadata, "per_paper": per_paper})
@@ -200,8 +177,9 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
                 r = paper_results[method]
                 content_list.append(r.get("content", 0.0))
                 style_list.append(r.get("style", 0.0))
-                logic_score = r.get("logic", {})
+                logic_score = r.get("logic", 0.0)
                 if isinstance(logic_score, dict):
+                    # Backward compat: handle old dict format from prior runs
                     logic_list.append(float(logic_score.get("score", 0)))
                 else:
                     logic_list.append(float(logic_score))
@@ -219,5 +197,5 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
         "per_paper": per_paper,
     }
     save_incremental(out_path, final)
-    print(f"\n[{METRIC_NAME}] Done. Results → {out_path}")
+    print(f"\n[{METRIC_NAME}] Done. Results -> {out_path}")
     return final

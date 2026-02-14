@@ -2,10 +2,13 @@
 utils/image_utils.py — Slide image utilities.
 
 Provides:
-  • pptx_to_images()   — convert a PPTX file to PNG slides via LibreOffice
-  • resize_images()    — resize images in-place (reduces VLM token usage)
-  • resize_images_tmp()— resize images to a temp directory (non-destructive)
-  • sample_slides()    — evenly-distributed slide sampling
+  • slides_to_images()  — convert PPTX or PDF to PNG slides via LibreOffice
+  • pptx_to_images()    — convert a PPTX file to PNG slides (legacy alias)
+  • pdf_to_images()     — convert a PDF file to PNG slides
+  • resize_images()     — resize images in-place (reduces VLM token usage)
+  • resize_images_tmp() — resize images to a temp directory (non-destructive)
+  • sample_slides()     — evenly-distributed slide sampling
+  • find_and_convert()  — find a PPTX/PDF and convert to images
 
 Output folder structure
 -----------------------
@@ -29,78 +32,111 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import constants as C
 
 
-# ── PPTX → PNG conversion ─────────────────────────────────────────────────────
+# ── Presentation → PNG conversion ────────────────────────────────────────────
 
-def pptx_to_images(pptx_path: str | Path, out_dir: str | Path) -> list[str]:
-    """
-    Convert a PPTX file to PNG slides using LibreOffice headless.
-
-    Slides are written to *out_dir* as slide_001.png, slide_002.png, …
-    (zero-padded to 3 digits for reliable alphabetic sorting).
-
-    Skips conversion entirely if slide_001.png already exists in *out_dir*.
-
-    Returns a sorted list of absolute PNG file paths, or [] on failure.
-    """
-    pptx_path = Path(pptx_path)
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # ── Skip if already converted ────────────────────────────────────────────
-    existing = sorted(out_dir.glob("slide_*.png"))
-    if existing:
-        print(f"  [image] Skipping {pptx_path.name} ({len(existing)} slides already in {out_dir})")
-        return [str(p) for p in existing]
-
-    # ── Locate LibreOffice binary ────────────────────────────────────────────
+def _convert_pptx_to_pdf(pptx_path: Path, out_dir: Path) -> Path | None:
+    """Convert a PPTX to PDF via LibreOffice headless. Returns PDF path or None."""
     lo_bin = C.LIBREOFFICE_PATH
     if not Path(lo_bin).exists():
         lo_bin = shutil.which("libreoffice") or shutil.which("soffice") or lo_bin
 
-    # LibreOffice drops output files into the --outdir with its own naming.
-    # Use a temp sub-directory so we can rename cleanly afterwards.
-    tmp_dir = out_dir / "_lo_tmp"
-    tmp_dir.mkdir(exist_ok=True)
-
     cmd = [
         lo_bin,
         "--headless",
-        "--convert-to", "png",
-        "--outdir", str(tmp_dir),
+        "--convert-to", "pdf",
+        "--outdir", str(out_dir),
         str(pptx_path),
     ]
     try:
         result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=120,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
         )
         if result.returncode != 0:
-            print(f"  [image] LibreOffice error: {result.stderr.decode()[:300]}")
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return []
+            print(f"  [image] LibreOffice PPTX->PDF error: {result.stderr.decode()[:300]}")
+            return None
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"  [image] LibreOffice conversion failed: {e}")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        print(f"  [image] LibreOffice PPTX->PDF failed: {e}")
+        return None
+
+    pdf_path = out_dir / (pptx_path.stem + ".pdf")
+    if pdf_path.exists():
+        return pdf_path
+    # LibreOffice may use a different name
+    pdfs = list(out_dir.glob("*.pdf"))
+    return pdfs[0] if pdfs else None
+
+
+def _convert_pdf_via_pymupdf(pdf_path: Path, out_dir: Path) -> list[str]:
+    """
+    Convert a PDF to PNG images using pymupdf (fallback when LibreOffice
+    produces only a single image for a multi-page PDF).
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        print("  [image] pymupdf not available for PDF->PNG fallback")
         return []
 
-    # ── Rename to slide_001.png, slide_002.png, … ────────────────────────────
-    raw_pngs = sorted(tmp_dir.glob("*.png"))
-    if not raw_pngs:
-        print(f"  [image] No PNGs produced for {pptx_path.name}")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    try:
+        doc = pymupdf.open(str(pdf_path))
+        renamed = []
+        for i, page in enumerate(doc, 1):
+            pix = page.get_pixmap(dpi=150)
+            dest = out_dir / f"slide_{i:03d}.png"
+            pix.save(str(dest))
+            renamed.append(str(dest))
+        doc.close()
+        print(f"  [image] Converted {pdf_path.name} -> {len(renamed)} slides via pymupdf")
+        return renamed
+    except Exception as e:
+        print(f"  [image] pymupdf PDF conversion failed: {e}")
         return []
 
-    renamed = []
-    for i, p in enumerate(raw_pngs, 1):
-        dest = out_dir / f"slide_{i:03d}.png"
-        p.rename(dest)
-        renamed.append(str(dest))
 
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-    print(f"  [image] Converted {pptx_path.name} → {len(renamed)} slides in {out_dir}")
-    return renamed
+def slides_to_images(file_path: str | Path, out_dir: str | Path) -> list[str]:
+    """
+    Convert a PPTX or PDF file to PNG slides.
+
+    Slides are written to *out_dir* as slide_001.png, slide_002.png, ...
+    Skips conversion entirely if slide_001.png already exists in *out_dir*.
+
+    Returns a sorted list of absolute PNG file paths, or [] on failure.
+    """
+    file_path = Path(file_path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Skip if already converted
+    existing = sorted(out_dir.glob("slide_*.png"))
+    if existing:
+        print(f"  [image] Skipping {file_path.name} ({len(existing)} slides already in {out_dir})")
+        return [str(p) for p in existing]
+
+    if file_path.suffix.lower() == ".pdf":
+        return _convert_pdf_via_pymupdf(file_path, out_dir)
+
+    # PPTX: convert to PDF first via LibreOffice, then PDF → PNGs via pymupdf
+    if file_path.suffix.lower() == ".pptx":
+        tmp_pdf = _convert_pptx_to_pdf(file_path, out_dir)
+        if tmp_pdf:
+            result = _convert_pdf_via_pymupdf(tmp_pdf, out_dir)
+            tmp_pdf.unlink(missing_ok=True)  # Clean up intermediate PDF
+            return result
+        print(f"  [image] Could not convert PPTX to PDF: {file_path.name}")
+        return []
+
+    print(f"  [image] Unsupported format: {file_path.suffix}")
+    return []
+
+
+def pptx_to_images(pptx_path: str | Path, out_dir: str | Path) -> list[str]:
+    """Legacy alias for slides_to_images(). Works with both PPTX and PDF."""
+    return slides_to_images(pptx_path, out_dir)
+
+
+def pdf_to_images(pdf_path: str | Path, out_dir: str | Path) -> list[str]:
+    """Convert a PDF file to PNG slides. Alias for slides_to_images()."""
+    return slides_to_images(pdf_path, out_dir)
 
 
 # ── Image resizing ────────────────────────────────────────────────────────────
@@ -193,3 +229,47 @@ def get_method_images(
         + list(paper_dir.glob("*.png"))
     )
     return sorted(str(p) for p in images)
+
+
+def find_and_convert_images(method: str, paper_name: str) -> list[str]:
+    """
+    Find or convert slide images for a method/paper combination.
+
+    1. Check the image cache for existing PNGs.
+    2. Check the source method directory for existing images (PNG/JPG).
+    3. If no images found, look for a PPTX or PDF file and convert it.
+    4. Returns a sorted list of image file paths, or [] if nothing found.
+    """
+    # 1. Check cache
+    cached = get_method_images(method, paper_name)
+    if cached:
+        return cached
+
+    # 2. Check source directory for existing images
+    method_dir = Path(C.GENERATED_SAMPLES_DIR) / method / paper_name
+    if not method_dir.exists():
+        return []
+
+    existing = sorted(
+        list(method_dir.glob("*.png"))
+        + list(method_dir.glob("*.jpg"))
+        + list(method_dir.glob("*.jpeg"))
+    )
+    if existing:
+        return [str(p) for p in existing]
+
+    # 3. Find a presentation file (PPTX or PDF) and convert
+    pres_file = None
+    pptx_files = list(method_dir.glob("*.pptx"))
+    if pptx_files:
+        pres_file = pptx_files[0]
+    else:
+        pdf_files = list(method_dir.glob("*.pdf"))
+        if pdf_files:
+            pres_file = pdf_files[0]
+
+    if pres_file is None:
+        return []
+
+    out_dir = Path(C.IMAGES_CACHE_DIR) / method / paper_name
+    return slides_to_images(pres_file, out_dir)

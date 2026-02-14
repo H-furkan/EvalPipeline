@@ -4,6 +4,9 @@ llm/client.py — Unified LLM client.
 Provides call_text() and call_vision() that route to either a local vLLM server
 or the OpenAI API depending on constants.LLM_BACKEND.
 
+Both functions default to the same VL model (constants.MODEL) which handles
+both text-only and multimodal (text + images) prompts.
+
 All other modules import only from here — no direct HTTP or OpenAI SDK calls elsewhere.
 """
 
@@ -48,16 +51,22 @@ def _build_openai_vision_content(prompt: str, image_paths: list[str]) -> list:
 
 def _parse_json_response(text: str) -> Optional[dict]:
     """Try to extract a JSON object from a model response string."""
-    # Strip markdown code fences if present
+    import re
+
     text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+    # Strip <think>...</think> blocks (reasoning models)
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+
+    # Strip markdown code fences anywhere in the text
+    fence_match = re.search(r"```(?:json)?\s*\n([\s\S]*?)```", text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Try to find the first {...} block
-        import re
+        # Try to find the first {...} block (handles extra text around JSON)
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
             try:
@@ -103,6 +112,8 @@ def _call_vllm(
         "top_p": top_p,
         "n": 1,
     }
+    if return_json:
+        payload["response_format"] = {"type": "json_object"}
 
     for attempt in range(1, C.MAX_RETRIES + 1):
         try:
@@ -190,7 +201,7 @@ def call_text(
 
     Args:
         prompt:      The full prompt string.
-        model:       Model identifier. Defaults to constants.TEXT_MODEL.
+        model:       Model identifier. Defaults to constants.MODEL (VL model).
         max_tokens:  Max tokens to generate.
         temperature: Sampling temperature.
         top_p:       Nucleus sampling threshold.
@@ -199,7 +210,7 @@ def call_text(
     Returns:
         str | dict | None
     """
-    model = model or C.TEXT_MODEL
+    model = model or C.MODEL
     if C.LLM_BACKEND == "openai":
         return _call_openai(prompt, model, max_tokens=max_tokens,
                             temperature=temperature, top_p=top_p,
@@ -224,7 +235,7 @@ def call_vision(
     Args:
         prompt:      The text prompt.
         image_paths: List of local image file paths to attach.
-        model:       Model identifier. Defaults to constants.VISION_MODEL.
+        model:       Model identifier. Defaults to constants.MODEL (VL model).
         max_tokens:  Max tokens to generate.
         temperature: Sampling temperature.
         top_p:       Nucleus sampling threshold.
@@ -233,7 +244,7 @@ def call_vision(
     Returns:
         str | dict | None
     """
-    model = model or C.VISION_MODEL
+    model = model or C.MODEL
     if C.LLM_BACKEND == "openai":
         return _call_openai(prompt, model, image_paths=image_paths,
                             max_tokens=max_tokens, temperature=temperature,

@@ -4,7 +4,7 @@ metrics/narrative_flow.py — Narrative Flow pairwise evaluation.
 Compares OURS_METHOD against each baseline on a single criterion:
 does the presentation preserve the logical narrative structure of the source paper?
 
-Model: text LLM (Qwen2.5-32B-Instruct by default)
+Model: VL model (Qwen2.5-VL-32B-Instruct by default)
 Input: processed text files from PROCESSED_DATA_DIR
 Prompt: prompts/narrative_flow.txt
 Output: results/narrative_flow.json
@@ -21,6 +21,7 @@ import constants as C
 from llm.client import call_text
 from utils.result_utils import (
     aggregate_pairwise_wins,
+    get_processed_text_path,
     load_existing,
     make_metadata,
     result_path,
@@ -87,7 +88,7 @@ def _compare_one(
     prompt = template.format(
         reference=reference, option_a=option_a, option_b=option_b
     )
-    response = call_text(prompt, model=C.TEXT_MODEL)
+    response = call_text(prompt, model=C.MODEL)
     winner, reasoning = _parse_winner(response, a_source, b_source)
 
     return {
@@ -118,20 +119,20 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
     existing = load_existing(out_path)
     per_paper: dict = existing.get("per_paper", {})
 
-    metadata = make_metadata(METRIC_NAME, C.TEXT_MODEL)
+    metadata = make_metadata(METRIC_NAME, C.MODEL)
 
     for i, paper in enumerate(papers, 1):
         print(f"\n[{METRIC_NAME}] [{i}/{len(papers)}] {paper}")
         paper_dir = data_dir / paper
 
-        orig_path = paper_dir / "orig.txt"
-        ours_path = paper_dir / f"{C.OURS_METHOD}.txt"
+        orig_path = get_processed_text_path(paper, "orig")
+        ours_path = get_processed_text_path(paper, C.OURS_METHOD)
 
-        if not orig_path.exists():
-            print(f"  Skipping: orig.txt not found")
+        if orig_path is None:
+            print(f"  Skipping: orig text not found")
             continue
-        if not ours_path.exists():
-            print(f"  Skipping: {C.OURS_METHOD}.txt not found")
+        if ours_path is None:
+            print(f"  Skipping: {C.OURS_METHOD} text not found")
             continue
 
         reference = orig_path.read_text(encoding="utf-8")
@@ -148,8 +149,8 @@ def run(papers: list[str], baseline_methods: list[str]) -> dict:
                 print(f"  Skipping {baseline} (already done)")
                 continue
 
-            baseline_path = paper_dir / f"{baseline}.txt"
-            if not baseline_path.exists():
+            baseline_path = get_processed_text_path(paper, baseline)
+            if baseline_path is None:
                 print(f"  Skipping {baseline}: text file not found")
                 continue
 
