@@ -68,7 +68,7 @@ OPENAI_API_BASE = "https://api.openai.com/v1"
 MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 # Local model path for perplexity evaluation (loaded via transformers, no server needed)
-PPL_MODEL_PATH = "meta-llama/Meta-Llama-3-8B"
+PPL_MODEL_PATH = "facebook/opt-125m"
 
 # ── Supported Models ─────────────────────────────────────────────────────────
 # Pre-defined model configurations for easy switching.
@@ -116,12 +116,10 @@ MAX_RETRIES = 3
 # List of metrics to run. Comment out any entry to skip that metric.
 ENABLED_METRICS = [
     "narrative_flow",     # Pairwise: does presentation preserve paper's narrative structure?
-    "content_pairwise",   # Pairwise: 4 content attributes (text quality, structure, org, conciseness)
     "design_pairwise",    # Pairwise: 5 design attributes (layout, readability, …) — image-based
-    "coherence_pairwise", # Pairwise: 3 coherence attributes (logical flow, consistency, completeness)
     "quiz_eval",          # Generate Q&A from paper, answer from slide text → information coverage
     "rouge_eval",         # ROUGE-L: text overlap between slides and source paper
-    "perplexity_eval",    # Perplexity (PPL): language fluency via Llama-3-8B
+    "perplexity_eval",    # Perplexity (PPL): language fluency via causal LM
     "ppt_score_eval",     # VLM-as-judge: per-slide content / style / logic scores (1-5)
     "general_stats_eval", # General stats: page count, character count, figure count per presentation
 ]

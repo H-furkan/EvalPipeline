@@ -9,7 +9,7 @@ This project provides a comprehensive framework for evaluating the quality of au
 - **Source papers** (PDF format)
 - **Generated presentations** from multiple methods (PPTX or PDF format)
 
-The pipeline converts all inputs to markdown, strips supplementary material from papers, and runs **10 evaluation metrics** covering:
+The pipeline converts all inputs to markdown, strips supplementary material from papers, and runs **7 evaluation metrics** covering:
 
 - **Pairwise comparisons** (LLM-as-judge): Which method produces better slides?
 - **Scalar metrics** (absolute scores): How good are each method's slides independently?
@@ -29,14 +29,11 @@ EvalPipeline/
 │   └── client.py            # Unified LLM client (vLLM / OpenAI) with retry and vision support
 ├── metrics/
 │   ├── narrative_flow.py    # Pairwise: narrative structure preservation
-│   ├── content_pairwise.py  # Pairwise: text quality, structure, organization, conciseness
 │   ├── design_pairwise.py   # Pairwise: layout, readability, density, aesthetics, consistency
-│   ├── coherence_pairwise.py# Pairwise: logical flow, consistency, completeness
 │   ├── quiz_eval.py         # Quiz-based information coverage from source paper
 │   ├── rouge_eval.py        # ROUGE-L text overlap
-│   ├── perplexity_eval.py   # Language fluency via Llama-3-8B
+│   ├── perplexity_eval.py   # Language fluency via causal LM
 │   ├── ppt_score_eval.py    # VLM-as-judge per-slide scoring (1-5 scale)
-│   ├── fid_eval.py          # FID: Frechet Inception Distance between generated and reference slides
 │   └── general_stats_eval.py# General stats: page count, character count, figure count
 ├── prompts/                 # Prompt templates for all LLM-based metrics
 ├── utils/
@@ -99,7 +96,7 @@ All evaluation tasks use a single VL model. The same model handles text-only pro
 
 ### Perplexity Model
 
-- `meta-llama/Meta-Llama-3-8B` (loaded locally via HuggingFace transformers, no server needed)
+- `facebook/opt-125m` (loaded locally via HuggingFace transformers, no server needed)
 
 ## Configuration
 
@@ -187,14 +184,11 @@ Results are saved as JSON files in the `results/` directory:
 ```
 results/
   narrative_flow.json
-  content_pairwise.json
   design_pairwise.json
-  coherence_pairwise.json
   quiz_eval.json
   rouge_eval.json
   perplexity_eval.json
   ppt_score_eval.json
-  fid_eval.json
   general_stats_eval.json
   processed_data/           # Converted markdown files
 ```
@@ -239,9 +233,7 @@ These metrics present slides from the primary method and a baseline side-by-side
 | Metric | Attributes Evaluated | Input Type |
 |---|---|---|
 | `narrative_flow` | Preservation of the source paper's narrative structure | Text |
-| `content_pairwise` | Text quality, structure, organization, conciseness (4 attributes) | Text |
 | `design_pairwise` | Layout, readability, text density, aesthetics, consistency (5 attributes) | Images |
-| `coherence_pairwise` | Logical flow, topical consistency, completeness (3 attributes) | Text |
 
 ### Scalar Metrics
 
@@ -249,9 +241,8 @@ These metrics present slides from the primary method and a baseline side-by-side
 |---|---|---|
 | `quiz_eval` | Generates 50 simple + 50 detail quiz questions from the source paper, then tests how well slide content can answer them | VL model |
 | `rouge_eval` | ROUGE-L F1 overlap between slide text and source paper | None (text-based) |
-| `perplexity_eval` | Language fluency measured via causal LM perplexity (lower = more fluent) | Meta-Llama-3-8B (local) |
+| `perplexity_eval` | Language fluency measured via causal LM perplexity (lower = more fluent) | OPT-125M (local) |
 | `ppt_score_eval` | VLM rates each slide on content (1-5), style (1-5), and logic (1-5) | VL model |
-| `fid_eval` | Frechet Inception Distance between generated and ground-truth slide images (lower = more similar) | InceptionV3 (local) |
 | `general_stats_eval` | Counts pages, characters, and figures per presentation | None (PPTX/PDF parsing) |
 
 ## Data Preparation

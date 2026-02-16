@@ -37,9 +37,9 @@ import constants as C
 from utils.result_utils import print_pairwise_summary, print_scalar_summary
 
 # Metrics that produce pairwise win-rate results
-PAIRWISE_METRICS = {"narrative_flow", "content_pairwise", "design_pairwise", "coherence_pairwise"}
+PAIRWISE_METRICS = {"narrative_flow", "design_pairwise"}
 # Metrics that produce scalar / per-method averages
-SCALAR_METRICS = {"quiz_eval", "rouge_eval", "perplexity_eval", "ppt_score_eval", "fid_eval", "general_stats_eval"}
+SCALAR_METRICS = {"quiz_eval", "rouge_eval", "perplexity_eval", "ppt_score_eval", "general_stats_eval"}
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
@@ -116,9 +116,9 @@ def parse_args() -> argparse.Namespace:
         metavar="METRIC",
         help=(
             "Metrics to run. If omitted, runs all metrics in constants.ENABLED_METRICS.\n"
-            "Available: narrative_flow, content_pairwise, design_pairwise, "
-            "coherence_pairwise, quiz_eval, rouge_eval, perplexity_eval, ppt_score_eval, "
-            "fid_eval, general_stats_eval"
+            "Available: narrative_flow, design_pairwise, "
+            "quiz_eval, rouge_eval, perplexity_eval, ppt_score_eval, "
+            "general_stats_eval"
         ),
     )
     parser.add_argument(
