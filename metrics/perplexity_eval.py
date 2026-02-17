@@ -4,7 +4,7 @@ metrics/perplexity_eval.py — Perplexity (PPL) evaluation.
 Measures language fluency of generated slide text using a causal language model.
 Lower perplexity = more fluent / natural language.
 
-Model: facebook/opt-125m (or any causal LM set in constants.PPL_MODEL_PATH)
+Model: meta-llama/Meta-Llama-3-8B (or any causal LM set in constants.PPL_MODEL_PATH)
 Dependencies: pip install transformers torch
 Output: results/perplexity_eval.json
 """

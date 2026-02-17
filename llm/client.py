@@ -195,6 +195,7 @@ def call_text(
     temperature: float = C.TEMPERATURE,
     top_p: float = C.TOP_P,
     return_json: bool = False,
+    backend: Optional[str] = None,
 ) -> Optional[Union[str, dict]]:
     """
     Send a text-only prompt to the configured LLM backend.
@@ -206,12 +207,14 @@ def call_text(
         temperature: Sampling temperature.
         top_p:       Nucleus sampling threshold.
         return_json: If True, attempt to parse the response as JSON and return a dict.
+        backend:     Override LLM_BACKEND for this call ("openai" or "vllm").
 
     Returns:
         str | dict | None
     """
     model = model or C.MODEL
-    if C.LLM_BACKEND == "openai":
+    use_backend = backend or C.LLM_BACKEND
+    if use_backend == "openai":
         return _call_openai(prompt, model, max_tokens=max_tokens,
                             temperature=temperature, top_p=top_p,
                             return_json=return_json)
@@ -228,6 +231,7 @@ def call_vision(
     temperature: float = C.TEMPERATURE,
     top_p: float = C.TOP_P,
     return_json: bool = False,
+    backend: Optional[str] = None,
 ) -> Optional[Union[str, dict]]:
     """
     Send a multimodal (text + images) prompt to the configured LLM backend.
@@ -240,12 +244,14 @@ def call_vision(
         temperature: Sampling temperature.
         top_p:       Nucleus sampling threshold.
         return_json: If True, attempt to parse the response as JSON and return a dict.
+        backend:     Override LLM_BACKEND for this call ("openai" or "vllm").
 
     Returns:
         str | dict | None
     """
     model = model or C.MODEL
-    if C.LLM_BACKEND == "openai":
+    use_backend = backend or C.LLM_BACKEND
+    if use_backend == "openai":
         return _call_openai(prompt, model, image_paths=image_paths,
                             max_tokens=max_tokens, temperature=temperature,
                             top_p=top_p, return_json=return_json)

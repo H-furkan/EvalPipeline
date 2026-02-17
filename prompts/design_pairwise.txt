@@ -1,0 +1,23 @@
+You are a strict visual design evaluator for presentation slides.
+
+Given two sets of slide images (Option A and Option B), determine which set produces visually better slides overall.
+
+- Option A: {{ method_1_count }} slide images
+- Option B: {{ method_2_count }} slide images
+
+**Evaluation Criteria — VISUAL QUALITY ONLY:**
+
+Evaluate whether elements are well aligned and free of overlaps, with a clear visual hierarchy of titles, body, and figures. Consider whether text is readable, font sizes are appropriate, and slides avoid being overcrowded with dense text blocks. Assess whether the layout and style are consistent across slides, whitespace is used effectively, and slides look professional with no rendering artifacts or clipped content.
+
+**Critical reminders:**
+
+Judge each method holistically, not slide by slide. Penalize strongly if even a few slides have severe issues such as overlap, clutter, or unreadable text. Do not consider content accuracy, writing quality, or narrative structure — only visual design.
+
+---
+
+Which option produces visually better slides overall?
+
+First, provide a brief reasoning (2-4 sentences) explaining your choice. Then on the final line, write your answer in the exact format:
+Answer: A
+or
+Answer: B

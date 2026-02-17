@@ -4,14 +4,19 @@ data_prep/convert_to_text.py — Data preparation step.
 Converts:
   • PPTX presentations → markdown text (extracted directly via python-pptx)
   • PDF presentations  → markdown text (extracted via pymupdf4llm)
+  • Image-only slides  → markdown text (extracted via GPT-4o vision)
   • Original paper PDFs → markdown text (with supplementary material stripped)
+
+When python-pptx or pymupdf yields empty slides (text is embedded in images),
+the pipeline converts slides to PNG images and sends each to GPT-4o vision
+for OCR-quality text extraction. This requires OPENAI_API_KEY to be set.
 
 Output folder structure
 -----------------------
   PROCESSED_DATA_DIR/
     {paper}/
       orig.md           ← source paper (PDF → markdown, supp material removed)
-      {method}.md        ← slide text (PPTX/PDF → markdown)
+      {method}.md        ← slide text (PPTX/PDF/GPT-4o → markdown)
       ...
 
 Files are skipped automatically if they already exist (pass force=True to re-convert).
@@ -19,6 +24,7 @@ Files are skipped automatically if they already exist (pass force=True to re-con
 
 import re
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -180,6 +186,116 @@ def convert_pdf_slides_to_text(pdf_path: Path) -> str | None:
         return None
 
 
+# ── GPT-4o vision text extraction ────────────────────────────────────────────
+
+def _load_extraction_prompt() -> str:
+    """Load the vision text extraction prompt template."""
+    path = Path(C.PROMPTS_DIR) / "vision_extract_text.txt"
+    if not path.exists():
+        raise FileNotFoundError(f"Extraction prompt not found: {path}")
+    return path.read_text(encoding="utf-8")
+
+
+def extract_text_via_gpt4o(pres_file: Path, method: str, paper_name: str) -> str | None:
+    """
+    Extract text from slide images using GPT-4o vision.
+
+    Used as a fallback when python-pptx / pymupdf yields empty slides
+    (i.e. the text is embedded in images rather than in text frames).
+
+    Steps:
+      1. Convert the presentation to PNG images (cached in IMAGES_CACHE_DIR).
+      2. Send each slide image to GPT-4o with the extraction prompt.
+      3. Combine responses into the standard "## Slide N" markdown format.
+
+    Returns markdown text or None on failure.
+    """
+    if not C.VISION_EXTRACTION_ENABLED:
+        print("    [gpt4o] Vision extraction is disabled (VISION_EXTRACTION_ENABLED=False)")
+        return None
+
+    if not C.OPENAI_API_KEY:
+        print("    [gpt4o] Skipping: OPENAI_API_KEY is not set")
+        return None
+
+    from llm.client import call_vision
+    from utils.image_utils import slides_to_images
+
+    # Convert slides to images
+    out_dir = Path(C.IMAGES_CACHE_DIR) / method / paper_name
+    images = slides_to_images(pres_file, out_dir)
+    if not images:
+        print("    [gpt4o] No images produced from presentation")
+        return None
+
+    prompt = _load_extraction_prompt()
+    parts = []
+    success_count = 0
+
+    for i, img_path in enumerate(images, 1):
+        print(f"    [gpt4o] Extracting text from slide {i}/{len(images)} ...", end=" ", flush=True)
+        response = call_vision(
+            prompt,
+            [img_path],
+            model=C.VISION_EXTRACTION_MODEL,
+            backend="openai",
+            max_tokens=C.MAX_TOKENS,
+            temperature=0.0,
+        )
+        if response and response.strip():
+            text = response.strip()
+            success_count += 1
+        else:
+            text = "(empty slide)"
+        parts.append(f"## Slide {i}\n{text}")
+        print("done")
+
+        if C.SLEEP_BETWEEN_CALLS > 0 and i < len(images):
+            time.sleep(C.SLEEP_BETWEEN_CALLS)
+
+    # If no slide was successfully extracted, return None so fallbacks can kick in
+    if success_count == 0:
+        print("    [gpt4o] All slides failed extraction — returning None")
+        return None
+
+    return "\n\n".join(parts)
+
+
+def _extract_from_existing_images(images: list[str]) -> str | None:
+    """Extract text from a list of already-existing slide images via GPT-4o."""
+    from llm.client import call_vision
+
+    prompt = _load_extraction_prompt()
+    parts = []
+
+    for i, img_path in enumerate(images, 1):
+        print(f"    [gpt4o] Extracting text from slide {i}/{len(images)} ...", end=" ", flush=True)
+        response = call_vision(
+            prompt,
+            [img_path],
+            model=C.VISION_EXTRACTION_MODEL,
+            backend="openai",
+            max_tokens=C.MAX_TOKENS,
+            temperature=0.0,
+        )
+        text = response.strip() if response else "(empty slide)"
+        parts.append(f"## Slide {i}\n{text}")
+        print("done")
+
+        if C.SLEEP_BETWEEN_CALLS > 0 and i < len(images):
+            time.sleep(C.SLEEP_BETWEEN_CALLS)
+
+    result = "\n\n".join(parts)
+    # Check if all slides are empty
+    non_empty = [
+        line for line in result.split("\n")
+        if line.strip()
+        and not line.strip().startswith("## Slide")
+        and line.strip() != "(empty slide)"
+    ]
+    return result if non_empty else None
+
+
 # ── Presentation file discovery ──────────────────────────────────────────────
 
 def find_presentation_file(method_dir: Path) -> Path | None:
@@ -332,12 +448,20 @@ def process_paper(
                 print(f"    -> Written {method_out}")
                 continue
             elif all_empty:
-                print(f"    [convert] PDF/PPTX yielded all empty slides; trying slide_text.txt fallback")
+                print(f"    [convert] PDF/PPTX yielded all empty slides; trying GPT-4o vision extraction")
+                # Fallback 1: GPT-4o vision extraction for image-only slides
+                gpt4o_text = extract_text_via_gpt4o(pres_file, method, paper_name)
+                if gpt4o_text:
+                    method_out.write_text(gpt4o_text, encoding="utf-8")
+                    stats["methods"][method] = True
+                    print(f"    -> Written {method_out} (via GPT-4o)")
+                    continue
+                print(f"    [convert] GPT-4o extraction failed; trying slide_text.txt fallback")
             else:
                 stats["methods"][method] = False
                 continue
 
-        # Fallback: use existing slide_text.txt if no PPTX/PDF
+        # Fallback 2: use existing slide_text.txt if no PPTX/PDF or GPT-4o failed
         slide_text_path = method_dir / "slide_text.txt"
         if slide_text_path.exists():
             print(f"  [convert] Using slide_text.txt for {method} / {paper_name}")
@@ -346,6 +470,19 @@ def process_paper(
             stats["methods"][method] = True
             print(f"    -> Written {method_out}")
             continue
+
+        # Fallback 3: No PPTX/PDF found at all — try GPT-4o if there are images in the dir
+        if C.VISION_EXTRACTION_ENABLED and C.OPENAI_API_KEY:
+            from utils.image_utils import find_and_convert_images
+            existing_images = find_and_convert_images(method, paper_name)
+            if existing_images:
+                print(f"  [convert] Found images for {method}/{paper_name}; trying GPT-4o extraction")
+                gpt4o_text = _extract_from_existing_images(existing_images)
+                if gpt4o_text:
+                    method_out.write_text(gpt4o_text, encoding="utf-8")
+                    stats["methods"][method] = True
+                    print(f"    -> Written {method_out} (via GPT-4o)")
+                    continue
 
         print(f"  [convert] Warning: no PPTX, PDF, or slide_text.txt for {method}/{paper_name}")
         stats["methods"][method] = False

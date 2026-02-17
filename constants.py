@@ -37,7 +37,7 @@ LIBREOFFICE_PATH = os.path.expanduser("~/libreoffice/opt/libreoffice25.8/program
 
 # ── Methods ───────────────────────────────────────────────────────────────────
 # The "our" method being evaluated
-OURS_METHOD = "ours_rst-4o_newv2"
+OURS_METHOD = "ours_rst-4o_newv3"
 
 # Baseline methods to compare against
 BASELINE_METHODS = [
@@ -51,24 +51,33 @@ BASELINE_METHODS = [
 # ── LLM Backend ───────────────────────────────────────────────────────────────
 # "vllm"   → Connect to a local vLLM HTTP server (recommended for Qwen models)
 # "openai" → Use OpenAI API directly (requires OPENAI_API_KEY env var or below)
-LLM_BACKEND = "vllm"
+LLM_BACKEND = "openai"
 
 # vLLM server configuration (used when LLM_BACKEND == "vllm")
 VLLM_API_BASE = "http://localhost:7001/v1"
 VLLM_HEALTH_URL = "http://localhost:7001/health"
 
-# OpenAI API configuration (used when LLM_BACKEND == "openai")
-# Leave empty to read from the OPENAI_API_KEY environment variable
+# ── OpenAI API ───────────────────────────────────────────────────────────────
+# Required for: GPT-4o vision text extraction during data prep,
+#               and when LLM_BACKEND == "openai" for evaluation metrics.
+# Set via environment variable (recommended) or hard-code below.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_API_BASE = "https://api.openai.com/v1"
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 # Single vision-language model used for ALL evaluation tasks (text and image).
-# Qwen2.5-VL models handle both text-only and multimodal prompts.
-MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
+MODEL = "gpt-5"
 
 # Local model path for perplexity evaluation (loaded via transformers, no server needed)
-PPL_MODEL_PATH = "facebook/opt-125m"
+PPL_MODEL_PATH = "meta-llama/Meta-Llama-3-8B"
+
+# ── GPT-4o Vision Text Extraction ────────────────────────────────────────────
+# Some slides contain text embedded in images that python-pptx / pymupdf cannot
+# extract. When standard extraction yields empty slides, the pipeline converts
+# them to images and sends each slide to GPT-4o vision to extract the text.
+# This always uses the OpenAI API regardless of the LLM_BACKEND setting.
+VISION_EXTRACTION_ENABLED = True
+VISION_EXTRACTION_MODEL = "gpt-4o-2024-08-06"
 
 # ── Supported Models ─────────────────────────────────────────────────────────
 # Pre-defined model configurations for easy switching.
@@ -85,6 +94,7 @@ SUPPORTED_MODELS = {
     "qwen2.5-vl-32b": "Qwen/Qwen2.5-VL-32B-Instruct",
     "qwen2.5-vl-72b": "Qwen/Qwen2.5-VL-72B-Instruct",
     "gpt-4o":         "gpt-4o-2024-08-06",
+    "gpt-5":          "gpt-5",
 }
 
 # ── Inference Parameters ──────────────────────────────────────────────────────
@@ -116,7 +126,7 @@ MAX_RETRIES = 3
 # List of metrics to run. Comment out any entry to skip that metric.
 ENABLED_METRICS = [
     "narrative_flow",     # Pairwise: does presentation preserve paper's narrative structure?
-    "design_pairwise",    # Pairwise: 5 design attributes (layout, readability, …) — image-based
+    "design_pairwise",    # Pairwise: overall visual design quality — image-based
     "quiz_eval",          # Generate Q&A from paper, answer from slide text → information coverage
     "rouge_eval",         # ROUGE-L: text overlap between slides and source paper
     "perplexity_eval",    # Perplexity (PPL): language fluency via causal LM
